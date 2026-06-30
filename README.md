@@ -81,9 +81,14 @@ WHISPER_MODEL=small python app.py
 
 ## 🔐 Contenus Instagram / privés (cookies)
 
-Instagram bloque souvent l'accès sans être connecté. Si un lien échoue, deux options :
+Instagram bloque souvent l'accès sans être connecté. **Bonne nouvelle : c'est
+automatique.** Si un contenu demande une connexion, l'outil réessaie tout seul
+en utilisant les cookies des navigateurs installés (Chrome, Edge, Firefox…).
+Donc **si tu es connecté à Instagram dans ton navigateur, ça marche sans rien faire.**
 
-1. **Le plus simple** — utiliser les cookies de ton navigateur déjà connecté :
+Si jamais ça ne suffit pas, tu peux forcer manuellement :
+
+1. **Cookies d'un navigateur précis** :
    ```bash
    COOKIES_FROM_BROWSER=chrome python app.py
    ```
@@ -94,6 +99,19 @@ Instagram bloque souvent l'accès sans être connecté. Si un lien échoue, deux
    ```
 
 ⚠️ Ne partage jamais ton fichier de cookies (il est déjà ignoré par git).
+
+---
+
+## ✅ Vérifier que tout fonctionne
+
+Un auto-test est inclus. Il vérifie l'installation et télécharge le modèle :
+
+```bash
+python selftest.py
+```
+
+Il affiche `[OK]` à chaque étape si tout va bien. (Il est lancé
+automatiquement à la première installation via `start.sh` / `start.bat`.)
 
 ---
 

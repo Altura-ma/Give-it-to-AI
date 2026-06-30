@@ -47,26 +47,79 @@ def _get_model():
     return _model
 
 
-def _ydl_opts(**extra):
-    """Options communes pour yt-dlp, avec gestion optionnelle des cookies."""
+# Navigateurs essayés automatiquement pour récupérer les cookies si un contenu
+# demande d'être connecté (ex. Instagram). On s'arrête au premier qui fonctionne.
+_AUTO_BROWSERS = ("chrome", "edge", "firefox", "brave", "chromium", "opera", "safari", "vivaldi")
+
+
+def _ydl_opts(cookies=None, **extra):
+    """Options communes pour yt-dlp. `cookies` = dict d'options cookies à appliquer."""
     opts = {
         "quiet": True,
         "no_warnings": True,
         "noprogress": True,
         "skip_download": True,
+        "socket_timeout": 30,
+        "retries": 3,
+        "ignoreerrors": False,
+        # Un en-tête de navigateur réduit les blocages sur certains sites
+        "http_headers": {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/122.0 Safari/537.36"
+            )
+        },
     }
-    if COOKIES_FILE:
-        opts["cookiefile"] = COOKIES_FILE
-    if COOKIES_FROM_BROWSER:
-        opts["cookiesfrombrowser"] = (COOKIES_FROM_BROWSER,)
+    if cookies:
+        opts.update(cookies)
     opts.update(extra)
     return opts
 
 
+def _cookie_candidates():
+    """Stratégies de cookies à essayer, dans l'ordre."""
+    # 1) Configuration explicite par l'utilisateur (prioritaire, on s'y tient)
+    if COOKIES_FILE:
+        yield {"cookiefile": COOKIES_FILE}
+        return
+    if COOKIES_FROM_BROWSER:
+        yield {"cookiesfrombrowser": (COOKIES_FROM_BROWSER,)}
+        return
+    # 2) Sans cookies (suffisant pour la plupart des contenus publics)
+    yield {}
+    # 3) Essai automatique des navigateurs installés (pour Instagram & co.)
+    for browser in _AUTO_BROWSERS:
+        yield {"cookiesfrombrowser": (browser,)}
+
+
+def _flatten(info):
+    """Si l'URL pointe vers une liste (profil, playlist...), prend le 1er élément."""
+    if info and info.get("entries"):
+        entries = [e for e in info["entries"] if e]
+        if entries:
+            return entries[0]
+    return info
+
+
 def _probe(url):
-    """Récupère les métadonnées sans rien télécharger."""
-    with yt_dlp.YoutubeDL(_ydl_opts()) as ydl:
-        return ydl.extract_info(url, download=False)
+    """
+    Récupère les métadonnées sans rien télécharger.
+    Essaie successivement les stratégies de cookies jusqu'à ce qu'une marche.
+    Renvoie (info, cookies_qui_ont_marché).
+    """
+    last_error = None
+    for cookies in _cookie_candidates():
+        try:
+            with yt_dlp.YoutubeDL(_ydl_opts(cookies=cookies)) as ydl:
+                info = ydl.extract_info(url, download=False)
+            if info:
+                return _flatten(info), cookies
+        except Exception as e:
+            last_error = e
+            continue
+    # Toutes les stratégies ont échoué
+    raise last_error if last_error else RuntimeError("Contenu introuvable.")
 
 
 def _build_meta(info):
@@ -133,7 +186,7 @@ def _pick_sub_lang(available):
     return next(iter(available))
 
 
-def _try_subtitles(url, info):
+def _try_subtitles(url, info, cookies=None):
     """Tente de récupérer des sous-titres existants. Renvoie (texte, méthode, langue)."""
     manual = info.get("subtitles") or {}
     auto = info.get("automatic_captions") or {}
@@ -145,6 +198,7 @@ def _try_subtitles(url, info):
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "sub")
             opts = _ydl_opts(
+                cookies=cookies,
                 writesubtitles=(source is manual),
                 writeautomaticsub=(source is auto),
                 subtitleslangs=[lang],
@@ -166,11 +220,13 @@ def _try_subtitles(url, info):
     return "", None, None
 
 
-def _transcribe_audio(url):
+def _transcribe_audio(url, cookies=None):
     """Télécharge l'audio et le transcrit avec Whisper. Renvoie (texte, langue)."""
     with tempfile.TemporaryDirectory() as tmp:
         out = os.path.join(tmp, "audio.%(ext)s")
-        opts = _ydl_opts(skip_download=False, format="bestaudio/best", outtmpl=out)
+        opts = _ydl_opts(
+            cookies=cookies, skip_download=False, format="bestaudio/best", outtmpl=out
+        )
         with yt_dlp.YoutubeDL(opts) as ydl:
             ydl.download([url])
         files = glob.glob(os.path.join(tmp, "audio.*"))
@@ -215,12 +271,15 @@ def extract_content(url):
     Point d'entrée principal.
     Renvoie un dictionnaire avec les infos + la transcription + un texte tout prêt.
     """
-    info = _probe(url)
+    info, cookies = _probe(url)
     result = _build_meta(info)
 
-    transcript, method, lang = _try_subtitles(url, info)
+    # On utilise l'URL résolue (utile si l'URL d'origine était une liste/profil)
+    target_url = info.get("webpage_url") or url
+
+    transcript, method, lang = _try_subtitles(target_url, info, cookies=cookies)
     if not transcript:
-        transcript, lang = _transcribe_audio(url)
+        transcript, lang = _transcribe_audio(target_url, cookies=cookies)
         method = f"Whisper local ({WHISPER_MODEL})" if transcript else None
 
     result["transcript"] = transcript
