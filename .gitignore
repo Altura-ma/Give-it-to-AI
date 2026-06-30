@@ -12,6 +12,9 @@ models/
 cookies.txt
 *.cookies
 
+# Tests
+.pytest_cache/
+
 # Fichiers temporaires
 *.tmp
 .DS_Store

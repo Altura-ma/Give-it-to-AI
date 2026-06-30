@@ -113,6 +113,17 @@ python selftest.py
 Il affiche `[OK]` à chaque étape si tout va bien. (Il est lancé
 automatiquement à la première installation via `start.sh` / `start.bat`.)
 
+### Tests automatisés (pour les développeurs)
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+23 tests couvrent le nettoyage des sous-titres, le choix de langue, les
+métadonnées, les cookies, le décodage audio, les chemins sous-titres /
+transcription (simulés) et l'API web.
+
 ---
 
 ## ❓ Problèmes fréquents
