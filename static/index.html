@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Give it to AI — récupérer le contenu d'une vidéo</title>
+  <style>
+    :root {
+      --bg: #0f1220;
+      --card: #181c2e;
+      --accent: #6c8cff;
+      --accent-2: #4caf7d;
+      --text: #eef1ff;
+      --muted: #9aa3c7;
+      --border: #2a2f48;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 60px;
+    }
+    .wrap { width: 100%; max-width: 720px; }
+    h1 { font-size: 1.7rem; margin: 12px 0 4px; text-align: center; }
+    .subtitle { color: var(--muted); text-align: center; margin: 0 0 28px; font-size: 1rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.25);
+    }
+    label { display: block; font-weight: 600; margin-bottom: 8px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+    input[type=text] {
+      flex: 1 1 260px;
+      padding: 16px;
+      font-size: 1.1rem;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #0d1020;
+      color: var(--text);
+      outline: none;
+    }
+    input[type=text]:focus { border-color: var(--accent); }
+    button {
+      padding: 16px 22px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      border: none;
+      border-radius: 12px;
+      background: var(--accent);
+      color: white;
+      cursor: pointer;
+      transition: transform .05s ease, opacity .2s;
+    }
+    button:hover { opacity: .92; }
+    button:active { transform: scale(.98); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .hint { color: var(--muted); font-size: .9rem; margin-top: 12px; }
+    .status {
+      display: none;
+      margin-top: 20px;
+      padding: 16px;
+      border-radius: 12px;
+      background: #0d1020;
+      border: 1px solid var(--border);
+      text-align: center;
+    }
+    .status.show { display: block; }
+    .spinner {
+      width: 26px; height: 26px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 10px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error { border-color: #ff6b6b; color: #ffb3b3; }
+    .result { display: none; margin-top: 24px; }
+    .result.show { display: block; }
+    .meta {
+      display: grid; gap: 4px; margin-bottom: 14px;
+      font-size: .95rem; color: var(--muted);
+    }
+    .meta b { color: var(--text); }
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 999px;
+      background: rgba(76,175,125,.15); color: var(--accent-2);
+      font-size: .8rem; font-weight: 700; margin-left: 6px;
+    }
+    textarea {
+      width: 100%; min-height: 260px; padding: 14px;
+      border-radius: 12px; border: 1px solid var(--border);
+      background: #0d1020; color: var(--text);
+      font-size: 1rem; line-height: 1.5; resize: vertical;
+    }
+    .copybar { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+    .copy { background: var(--accent-2); }
+    .copied { background: #2a2f48; }
+    footer { color: var(--muted); font-size: .85rem; margin-top: 32px; text-align: center; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🎬 → 📝 Give it to AI</h1>
+    <p class="subtitle">Colle le lien d'une vidéo (Instagram, TikTok, X, YouTube…) et récupère son contenu en texte.</p>
+
+    <div class="card">
+      <label for="url">Lien de la vidéo ou de la publication</label>
+      <div class="row">
+        <input id="url" type="text" placeholder="https://www.instagram.com/reel/..." autocomplete="off" />
+        <button id="go">Récupérer le texte</button>
+      </div>
+      <p class="hint">Astuce : tu peux juste coller le lien et appuyer sur Entrée.</p>
+
+      <div id="status" class="status">
+        <div class="spinner"></div>
+        <div id="statusText">Récupération en cours… (la 1re fois peut être plus longue)</div>
+      </div>
+    </div>
+
+    <div id="result" class="result">
+      <div id="meta" class="meta"></div>
+      <textarea id="output" readonly></textarea>
+      <div class="copybar">
+        <button id="copy" class="copy">📋 Copier pour Claude</button>
+      </div>
+    </div>
+
+    <footer>
+      100 % gratuit, tourne sur ton ordinateur. Aucune donnée envoyée à un service payant.
+    </footer>
+  </div>
+
+  <script>
+    const urlInput = document.getElementById("url");
+    const goBtn = document.getElementById("go");
+    const statusBox = document.getElementById("status");
+    const statusText = document.getElementById("statusText");
+    const resultBox = document.getElementById("result");
+    const metaBox = document.getElementById("meta");
+    const output = document.getElementById("output");
+    const copyBtn = document.getElementById("copy");
+
+    function setLoading(on) {
+      goBtn.disabled = on;
+      statusBox.className = on ? "status show" : "status";
+      if (on) {
+        resultBox.className = "result";
+        statusText.textContent = "Récupération en cours… (la 1re fois peut être plus longue)";
+      }
+    }
+
+    function showError(msg) {
+      statusBox.className = "status show error";
+      statusBox.innerHTML = "⚠️ " + msg;
+      goBtn.disabled = false;
+    }
+
+    function row(label, value) {
+      if (!value) return "";
+      return `<div><b>${label} :</b> ${value}</div>`;
+    }
+
+    async function extract() {
+      const url = urlInput.value.trim();
+      if (!url) { urlInput.focus(); return; }
+      setLoading(true);
+      try {
+        const res = await fetch("/api/extract", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          showError((data.error || "Erreur inconnue.") + (data.hint ? "<br><small>" + data.hint + "</small>" : ""));
+          return;
+        }
+        setLoading(false);
+        const methodBadge = data.method ? `<span class="badge">${data.method}</span>` : "";
+        metaBox.innerHTML =
+          row("Source", (data.source || "") + methodBadge) +
+          row("Auteur", data.uploader) +
+          row("Titre", data.title) +
+          row("Date", data.upload_date) +
+          row("Durée", data.duration);
+        output.value = data.text_for_claude || data.warning || "(Rien n'a pu être extrait.)";
+        resultBox.className = "result show";
+        output.scrollIntoView({ behavior: "smooth", block: "center" });
+      } catch (e) {
+        showError("Le serveur ne répond pas. Vérifie qu'il est bien lancé.");
+      }
+    }
+
+    goBtn.addEventListener("click", extract);
+    urlInput.addEventListener("keydown", (e) => { if (e.key === "Enter") extract(); });
+
+    copyBtn.addEventListener("click", async () => {
+      output.select();
+      try {
+        await navigator.clipboard.writeText(output.value);
+      } catch (e) {
+        document.execCommand("copy");
+      }
+      copyBtn.textContent = "✅ Copié !";
+      copyBtn.className = "copied";
+      setTimeout(() => { copyBtn.textContent = "📋 Copier pour Claude"; copyBtn.className = "copy"; }, 1800);
+    });
+  </script>
+</body>
+</html>

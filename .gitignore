@@ -1,0 +1,17 @@
+# Environnement Python
+.venv/
+__pycache__/
+*.pyc
+
+# Modèles Whisper téléchargés
+*.bin
+*.pt
+models/
+
+# Cookies (NE JAMAIS partager)
+cookies.txt
+*.cookies
+
+# Fichiers temporaires
+*.tmp
+.DS_Store
